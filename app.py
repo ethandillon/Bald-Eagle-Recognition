@@ -6,6 +6,9 @@ import smtplib
 from email.message import EmailMessage
 import os
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Load model once (outside handler to avoid reloading on every invocation)
 model = ResNet50(weights='imagenet')
