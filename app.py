@@ -9,6 +9,9 @@ from email.message import EmailMessage
 from datetime import datetime
 import tempfile
 import time # For the main loop sleep
+import random  # Add this import at the top of your file with the others
+from datetime import timedelta
+
 
 # Third-party libraries
 import cv2
@@ -20,8 +23,9 @@ from PIL import Image
 
 
 error_email_sent_this_outage = False
-CYCLE_INTERVAL_SECONDS = 300  # 300 seconds = 5 minutes
-
+# The script will run once per day at a random time between these hours.
+RANDOM_WINDOW_START_HOUR = 8  # 8 AM
+RANDOM_WINDOW_END_HOUR = 20 # 8 PM (20:00)
 # --- Initial Setup ---
 load_dotenv()
 print("Loading ResNet50 model (this may take a moment)...")
@@ -162,14 +166,69 @@ def run_detection_cycle():
             os.remove(temp_video_path)
 
 
+def calculate_next_run_time():
+    """
+    Calculates a random runtime for the next available day within the defined window.
+    """
+    now = datetime.now()
+    today_start_window = now.replace(hour=RANDOM_WINDOW_START_HOUR, minute=0, second=0, microsecond=0)
+
+    # Determine if we should schedule for today or tomorrow
+    if now < today_start_window:
+        # It's before the window opens today, so schedule for today
+        target_date = now.date()
+    else:
+        # It's either inside or after the window today, so schedule for tomorrow to be safe
+        target_date = now.date() + timedelta(days=1)
+
+    # Create the start and end datetime objects for the target date
+    start_of_window = datetime(target_date.year, target_date.month, target_date.day, RANDOM_WINDOW_START_HOUR)
+    end_of_window = datetime(target_date.year, target_date.month, target_date.day, RANDOM_WINDOW_END_HOUR)
+
+    # Calculate the total duration of the window in seconds
+    window_duration_seconds = (end_of_window - start_of_window).total_seconds()
+
+    # Pick a random number of seconds to add to the start time
+    random_seconds_offset = random.uniform(0, window_duration_seconds)
+
+    # Calculate the final target time
+    next_run_time = start_of_window + timedelta(seconds=random_seconds_offset)
+
+    return next_run_time
+
+# --- Main Application Loop ---
 # --- Main Application Loop ---
 def main():
+    """
+    The main entry point for the continuously running application.
+    Schedules and runs the detection cycle once per day at a random time.
+    """
     print("--- Bald Eagle Detection Bot Starting ---")
+    print(f"Scheduling mode: Once per day between {RANDOM_WINDOW_START_HOUR}:00 and {RANDOM_WINDOW_END_HOUR}:00.")
+
     while True:
-        print(f"\n--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting new detection cycle ---")
+        # 1. Calculate the next scheduled run time
+        next_run_time = calculate_next_run_time()
+        print(f"\n--- Next detection cycle is scheduled for: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+
+        # 2. Calculate how long we need to sleep
+        now = datetime.now()
+        sleep_duration_seconds = (next_run_time - now).total_seconds()
+
+        # 3. Sleep until the scheduled time (if it's in the future)
+        if sleep_duration_seconds > 0:
+            # We convert to hours/minutes for a more human-readable log message
+            sleep_hours = sleep_duration_seconds / 3600
+            print(f"--- Sleeping for {sleep_hours:.2f} hours... ---")
+            time.sleep(sleep_duration_seconds)
+
+        # 4. WAKE UP! It's time to run the detection.
+        print(f"\n--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Waking up and starting detection cycle ---")
         run_detection_cycle()
-        print(f"--- Cycle finished. Sleeping for {CYCLE_INTERVAL_SECONDS} seconds... ---")
-        time.sleep(CYCLE_INTERVAL_SECONDS)
+        print("--- Cycle finished. Calculating next run time... ---")
+
+        # The loop will now repeat, calculating a new time for the next day.
+
 
 # --- Execution Block ---
 if __name__ == "__main__":
