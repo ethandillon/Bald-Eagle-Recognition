@@ -263,4 +263,4 @@ def main():
 
 # --- Execution Block ---
 if __name__ == "__main__":
-    run_detection_cycle()
+    main()
