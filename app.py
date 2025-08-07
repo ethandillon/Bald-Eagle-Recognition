@@ -43,7 +43,7 @@ def smart_round(number, sig_figs=2):
     else: return f"{number:.{sig_figs}g}"
 
 # ### MODIFICATION: The send_email function now accepts raw image data instead of a file path.
-def send_email(subject, content, recipient_email="ethanbradforddillon@gmail.com", sender_email="baldeagledetectionbot@gmail.com", image_data=None, image_subtype='jpeg'):
+def send_email(subject, content, recipient_email=os.getenv("RECIPIENT_EMAIL"), sender_email=os.getenv("SENDER_EMAIL"), image_data=None, image_subtype='jpeg'):
     password = os.getenv("EMAIL_PASSWORD")
     if not password:
         print("ERROR: Email password not found.")
