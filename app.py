@@ -19,7 +19,6 @@ import numpy as np
 from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input, decode_predictions
 from dotenv import load_dotenv
 import streamlink
-from PIL import Image
 
 
 error_email_sent_this_outage = False
