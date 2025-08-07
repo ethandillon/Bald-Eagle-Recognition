@@ -42,7 +42,8 @@ def smart_round(number, sig_figs=2):
     if number == 0: return "0"
     else: return f"{number:.{sig_figs}g}"
 
-def send_email(subject, content, recipient_email="ethanbradforddillon@gmail.com", sender_email="baldeagledetectionbot@gmail.com", image_path=None):
+# ### MODIFICATION: The send_email function now accepts raw image data instead of a file path.
+def send_email(subject, content, recipient_email="ethanbradforddillon@gmail.com", sender_email="baldeagledetectionbot@gmail.com", image_data=None, image_subtype='jpeg'):
     password = os.getenv("EMAIL_PASSWORD")
     if not password:
         print("ERROR: Email password not found.")
@@ -52,15 +53,18 @@ def send_email(subject, content, recipient_email="ethanbradforddillon@gmail.com"
     msg['Subject'] = subject
     msg['From'] = sender_email
     msg['To'] = recipient_email
-    if image_path:
+
+    # Attach the image data if it was provided
+    if image_data:
         try:
-            image = Image.open(image_path)
-            img_type = image.format.lower()
-            with open(image_path, 'rb') as f:
-                img_data = f.read()
-            msg.add_attachment(img_data, maintype='image', subtype=img_type, filename=os.path.basename(image_path))
+            # Generate a filename for the attachment
+            timestamp_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            filename = f"detection_{timestamp_str}.{image_subtype}"
+            # Add the attachment from the in-memory bytes
+            msg.add_attachment(image_data, maintype='image', subtype=image_subtype, filename=filename)
         except Exception as e:
-            print(f"ERROR: Could not attach image. Exception: {e}")
+            print(f"ERROR: Could not attach image from memory. Exception: {e}")
+
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(sender_email, password)
@@ -75,7 +79,7 @@ def send_email(subject, content, recipient_email="ethanbradforddillon@gmail.com"
 def run_detection_cycle():
     """
     Runs a single cycle of the detection process with proper error handling.
-    ### MODIFICATION: Returns True on success, False on failure.
+    Returns True on success, False on failure.
     """
     global error_email_sent_this_outage
 
@@ -112,7 +116,6 @@ def run_detection_cycle():
 
         print("Frame captured successfully.")
 
-        # If we get here, the connection was successful. Reset the error flag if needed.
         if error_email_sent_this_outage:
             print("Connection restored. Resetting the error email notification flag.")
             send_email("INFO: Bald Eagle Bot - Connection Restored",
@@ -123,40 +126,61 @@ def run_detection_cycle():
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame_resized = cv2.resize(frame_rgb, (224, 224))
         preds = model.predict(np.expand_dims(preprocess_input(frame_resized), axis=0))
-        decoded_preds = decode_predictions(preds, top=10)[0]
+        decoded_preds = decode_predictions(preds, top=5)[0]
 
-        print("\n--- Top 10 Predictions ---")
+        print("\n--- Top 5 Predictions ---")
         for i, (_, label, probability) in enumerate(decoded_preds, start=1):
             print(f"{i}. {label.replace('_', ' ').title()}: {probability:.1%}")
-        print("--------------------------\n")
+        print("-------------------------\n")
 
         # 3. Analyze and Act
-        bald_eagle_is_detected = any(pred[1] == 'bald_eagle' for pred in decoded_preds)
-
-        if bald_eagle_is_detected:
-            eagle_pred = next(p for p in decoded_preds if p[1] == 'bald_eagle')
-            eagle_probability = eagle_pred[2]
-
-            print(f"SUCCESS: Bald Eagle detected with {eagle_probability:.1%} probability!")
-            prob_text = f"Bald Eagle: {eagle_probability:.1%}"
-            cv2.putText(frame, prob_text, (frame.shape[1] - 600, 70), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3)
-
-            timestamp_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            filename = f"detection_{timestamp_str}.jpg"
-            cv2.imwrite(filename, frame)
-            print(f"Image saved as {filename}")
-
-            subject = "Bald Eagle Detection Alert!"
-            content = f"A Bald Eagle was detected at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            send_email(subject, content, image_path=filename)
+        if not decoded_preds:
+             print("Model returned no predictions.")
         else:
-            print("Bald eagle not detected.")
+            top_pred_id, top_pred_label, top_pred_probability = decoded_preds[0]
 
-        ### ADDITION: Return True to signal success.
+            if top_pred_label == 'bald_eagle':
+                print(f"SUCCESS: Bald Eagle is the #1 prediction with {top_pred_probability:.1%} probability!")
+
+                # ### MODIFICATION: Draw the top 5 predictions onto the image frame
+                y_pos = 70
+                line_height = 50
+                font_scale = 1.2
+                font_thickness = 3
+
+                # Add a semi-transparent background for readability
+                cv2.rectangle(frame, (20, 20), (800, 30 + (len(decoded_preds) * line_height)), (0,0,0), -1)
+
+                for i, (_, label, probability) in enumerate(decoded_preds, start=1):
+                    text = f"{i}. {label.replace('_', ' ').title()}: {probability:.1%}"
+                    # Add a white outline for the text
+                    cv2.putText(frame, text, (50, y_pos), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness + 2)
+                    # Add the main text color
+                    cv2.putText(frame, text, (50, y_pos), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), font_thickness)
+                    y_pos += line_height
+
+                # ### MODIFICATION: Encode the image to memory instead of saving it to a file
+                success, encoded_image = cv2.imencode('.jpg', frame)
+                image_bytes = None
+                if success:
+                    image_bytes = encoded_image.tobytes()
+                    print("Image encoded to memory successfully.")
+                else:
+                    print("ERROR: Failed to encode image to JPEG format.")
+
+                # Send the email with the in-memory image data
+                subject = "Bald Eagle Detection Alert! (#1 Prediction)"
+                content = (
+                    f"A Bald Eagle was detected as the #1 prediction at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n\n"
+                    f"Confidence: {top_pred_probability:.1%}"
+                )
+                send_email(subject, content, image_data=image_bytes, image_subtype='jpeg')
+            else:
+                print(f"Bald eagle not the #1 prediction. Top result: {top_pred_label.replace('_', ' ').title()} ({top_pred_probability:.1%})")
+
         return True
 
     except Exception as e:
-        # This 'except' block now catches any failure during the entire process.
         print(f"CRITICAL ERROR: An error occurred during the detection cycle. Details: {e}")
 
         if not error_email_sent_this_outage:
@@ -172,11 +196,9 @@ def run_detection_cycle():
         else:
             print("An error email for this outage has already been sent. Suppressing new email.")
 
-        ### ADDITION: Return False to signal failure.
         return False
 
     finally:
-        # This 'finally' block ensures the temporary file is ALWAYS cleaned up.
         if temp_video_path and os.path.exists(temp_video_path):
             os.remove(temp_video_path)
 
@@ -188,27 +210,16 @@ def calculate_next_run_time():
     now = datetime.now()
     today_start_window = now.replace(hour=RANDOM_WINDOW_START_HOUR, minute=0, second=0, microsecond=0)
 
-    # Determine if we should schedule for today or tomorrow
     if now < today_start_window:
-        # It's before the window opens today, so schedule for today
         target_date = now.date()
     else:
-        # It's either inside or after the window today, so schedule for tomorrow to be safe
         target_date = now.date() + timedelta(days=1)
 
-    # Create the start and end datetime objects for the target date
     start_of_window = datetime(target_date.year, target_date.month, target_date.day, RANDOM_WINDOW_START_HOUR)
     end_of_window = datetime(target_date.year, target_date.month, target_date.day, RANDOM_WINDOW_END_HOUR)
-
-    # Calculate the total duration of the window in seconds
     window_duration_seconds = (end_of_window - start_of_window).total_seconds()
-
-    # Pick a random number of seconds to add to the start time
     random_seconds_offset = random.uniform(0, window_duration_seconds)
-
-    # Calculate the final target time
     next_run_time = start_of_window + timedelta(seconds=random_seconds_offset)
-
     return next_run_time
 
 
@@ -217,44 +228,37 @@ def main():
     """
     The main entry point for the continuously running application.
     Schedules and runs the detection cycle once per day at a random time.
-    ### MODIFICATION: Now includes a retry loop for failed cycles.
+    Includes a retry loop for failed cycles.
     """
     print("--- Bald Eagle Detection Bot Starting ---")
     print(f"Scheduling mode: Once per day between {RANDOM_WINDOW_START_HOUR}:00 and {RANDOM_WINDOW_END_HOUR}:00.")
     print(f"Retry delay on failure: {RETRY_DELAY_MINUTES} minutes.")
 
     while True:
-        # 1. Calculate the next scheduled run time
         next_run_time = calculate_next_run_time()
         print(f"\n--- Next detection cycle is scheduled for: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')} ---")
 
-        # 2. Calculate how long we need to sleep
         now = datetime.now()
         sleep_duration_seconds = (next_run_time - now).total_seconds()
 
-        # 3. Sleep until the scheduled time (if it's in the future)
         if sleep_duration_seconds > 0:
             sleep_hours = sleep_duration_seconds / 3600
             print(f"--- Sleeping for {sleep_hours:.2f} hours... ---")
             time.sleep(sleep_duration_seconds)
 
-        # 4. WAKE UP! It's time to run the detection.
         print(f"\n--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Waking up to start detection task ---")
 
-        ### MODIFICATION: This is the new retry loop.
-        # This inner loop will continue to run until run_detection_cycle() returns True.
         while True:
             success = run_detection_cycle()
             if success:
                 print("--- Cycle completed successfully. ---")
-                break  # Exit the retry loop and proceed to schedule the next day's run.
+                break
             else:
                 retry_seconds = RETRY_DELAY_MINUTES * 60
                 print(f"--- Cycle failed. Retrying in {RETRY_DELAY_MINUTES} minutes... ---")
                 time.sleep(retry_seconds)
 
         print("--- Task finished for this window. Calculating next run time... ---")
-        # The main loop will now repeat, calculating a new time for the next day.
 
 
 # --- Execution Block ---
