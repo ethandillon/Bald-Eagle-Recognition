@@ -1,9 +1,9 @@
 # Bald Eagle Detection Bot 🦅
 
-This project is a Python-based application that uses computer vision to monitor the [Decorah Eagles YouTube livestream](https://www.youtube.com/watch?v=B4-L2nfGcuE) 24/7. When a bald eagle is detected, the bot automatically saves an annotated screenshot and sends an email alert with the image attached.
+This project is a Python-based application that uses computer vision to monitor the [Big Bear Bald Eagles Nest YouTube livestream](https://www.youtube.com/watch?v=B4-L2nfGcuE). When a bald eagle is detected, the bot automatically saves an annotated screenshot and sends an email alert with the image attached.
 
 
-*(This is an example image. Replace with a link to one of your own detection screenshots!)*
+*(Placeholder for image)*
 
 ## The Story Behind the Project
 
@@ -21,11 +21,11 @@ After successfully deploying to the cloud, I encountered a roadblock that code c
 
 ## Tech Stack
 
-- **Language:** Python 3.11+
+- **Language:** Python 3.13
 - **Computer Vision:** OpenCV
 - **Machine Learning:** TensorFlow / Keras
 - **Stream Handling:** Streamlink
-- **Email & Environment:** smtplib, python-dotenv, Pillow
+- **Email & Environment:** smtplib, python-dotenv
 
 ---
 
@@ -38,7 +38,7 @@ This guide assumes you are setting this up to run continuously on a dedicated Wi
 First, clone this repository to a permanent location on your machine (e.g., `C:\Projects\EagleBot`).
 
 ```bash
-git clone https://github.com/your-username/your-repo-name.git
+git clone https://github.com/ethandillon/Bald-Eagle-Recognition
 cd your-repo-name
 ```
 
