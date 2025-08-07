@@ -9,7 +9,7 @@ from email.message import EmailMessage
 from datetime import datetime
 import tempfile
 import time # For the main loop sleep
-import random  # Add this import at the top of your file with the others
+import random
 from datetime import timedelta
 
 
@@ -26,6 +26,10 @@ error_email_sent_this_outage = False
 # The script will run once per day at a random time between these hours.
 RANDOM_WINDOW_START_HOUR = 8  # 8 AM
 RANDOM_WINDOW_END_HOUR = 20 # 8 PM (20:00)
+
+### ADDITION: Define how long to wait between retries after a connection failure.
+RETRY_DELAY_MINUTES = 15 # Wait 15 minutes before retrying a failed cycle
+
 # --- Initial Setup ---
 load_dotenv()
 print("Loading ResNet50 model (this may take a moment)...")
@@ -71,6 +75,7 @@ def send_email(subject, content, recipient_email="ethanbradforddillon@gmail.com"
 def run_detection_cycle():
     """
     Runs a single cycle of the detection process with proper error handling.
+    ### MODIFICATION: Returns True on success, False on failure.
     """
     global error_email_sent_this_outage
 
@@ -81,9 +86,10 @@ def run_detection_cycle():
         # --- The ENTIRE success path is now inside this single 'try' block ---
 
         # 1. Get Stream and Capture Frame
+        print("Attempting to connect to the stream...")
         streams = streamlink.streams(YOUTUBE_URL)
         if not streams:
-            raise ConnectionError("Streamlink could not find any available streams.")
+            raise ConnectionError("Streamlink could not find any available streams. The stream might be offline or the URL is incorrect.")
 
         stream = streams['best']
 
@@ -92,7 +98,7 @@ def run_detection_cycle():
             with stream.open() as fd:
                 chunk = fd.read(1024 * 1024 * 4)  # 4MB
                 if not chunk:
-                    raise ConnectionError("Read 0 bytes from streamlink. The stream might be dead.")
+                    raise ConnectionError("Read 0 bytes from streamlink. The stream might be dead or the connection was lost.")
                 temp_f.write(chunk)
 
         cap = cv2.VideoCapture(temp_video_path)
@@ -108,7 +114,9 @@ def run_detection_cycle():
 
         # If we get here, the connection was successful. Reset the error flag if needed.
         if error_email_sent_this_outage:
-            print("Connection successful. Resetting the error email notification flag.")
+            print("Connection restored. Resetting the error email notification flag.")
+            send_email("INFO: Bald Eagle Bot - Connection Restored",
+                       f"The connection was successfully re-established at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.")
             error_email_sent_this_outage = False
 
         # 2. Prediction Logic
@@ -144,6 +152,9 @@ def run_detection_cycle():
         else:
             print("Bald eagle not detected.")
 
+        ### ADDITION: Return True to signal success.
+        return True
+
     except Exception as e:
         # This 'except' block now catches any failure during the entire process.
         print(f"CRITICAL ERROR: An error occurred during the detection cycle. Details: {e}")
@@ -153,12 +164,16 @@ def run_detection_cycle():
             subject = "CRITICAL ERROR: Bald Eagle Bot - Cycle Failed"
             content = (
                 f"The Bald Eagle detection script encountered a fatal error at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n\n"
+                f"This could be a temporary internet/stream issue. The script will automatically retry.\n\n"
                 f"Error details:\n{e}"
             )
             send_email(subject, content)
             error_email_sent_this_outage = True
         else:
             print("An error email for this outage has already been sent. Suppressing new email.")
+
+        ### ADDITION: Return False to signal failure.
+        return False
 
     finally:
         # This 'finally' block ensures the temporary file is ALWAYS cleaned up.
@@ -196,15 +211,17 @@ def calculate_next_run_time():
 
     return next_run_time
 
-# --- Main Application Loop ---
+
 # --- Main Application Loop ---
 def main():
     """
     The main entry point for the continuously running application.
     Schedules and runs the detection cycle once per day at a random time.
+    ### MODIFICATION: Now includes a retry loop for failed cycles.
     """
     print("--- Bald Eagle Detection Bot Starting ---")
     print(f"Scheduling mode: Once per day between {RANDOM_WINDOW_START_HOUR}:00 and {RANDOM_WINDOW_END_HOUR}:00.")
+    print(f"Retry delay on failure: {RETRY_DELAY_MINUTES} minutes.")
 
     while True:
         # 1. Calculate the next scheduled run time
@@ -217,17 +234,27 @@ def main():
 
         # 3. Sleep until the scheduled time (if it's in the future)
         if sleep_duration_seconds > 0:
-            # We convert to hours/minutes for a more human-readable log message
             sleep_hours = sleep_duration_seconds / 3600
             print(f"--- Sleeping for {sleep_hours:.2f} hours... ---")
             time.sleep(sleep_duration_seconds)
 
         # 4. WAKE UP! It's time to run the detection.
-        print(f"\n--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Waking up and starting detection cycle ---")
-        run_detection_cycle()
-        print("--- Cycle finished. Calculating next run time... ---")
+        print(f"\n--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Waking up to start detection task ---")
 
-        # The loop will now repeat, calculating a new time for the next day.
+        ### MODIFICATION: This is the new retry loop.
+        # This inner loop will continue to run until run_detection_cycle() returns True.
+        while True:
+            success = run_detection_cycle()
+            if success:
+                print("--- Cycle completed successfully. ---")
+                break  # Exit the retry loop and proceed to schedule the next day's run.
+            else:
+                retry_seconds = RETRY_DELAY_MINUTES * 60
+                print(f"--- Cycle failed. Retrying in {RETRY_DELAY_MINUTES} minutes... ---")
+                time.sleep(retry_seconds)
+
+        print("--- Task finished for this window. Calculating next run time... ---")
+        # The main loop will now repeat, calculating a new time for the next day.
 
 
 # --- Execution Block ---
