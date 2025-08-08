@@ -1,9 +1,9 @@
 # Bald Eagle Detection Bot 🦅
 
-This project is a Python-based application that uses computer vision to monitor the [Big Bear Bald Eagles Nest YouTube livestream](https://www.youtube.com/watch?v=B4-L2nfGcuE). When a bald eagle is detected, the bot automatically saves an annotated screenshot and sends an email alert with the image attached.
+This project is a Python-based application that uses computer vision to monitor the [Big Bear Bald Eagles Nest YouTube livestream](https://www.youtube.com/watch?v=B4-L2nfGcuE). The bot runs at a random time once a day. When a bald eagle is detected, the bot automatically saves an annotated screenshot and sends an email alert with the image attached.
 
 
-*(Placeholder for image)*
+![Bald Eagle Sucessful Detection Screenshot](./docs/detection_2025-08-08_13-25-37.jpeg)
 
 ## The Story Behind the Project
 
