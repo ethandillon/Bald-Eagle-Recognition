@@ -38,8 +38,8 @@ This guide assumes you are setting this up to run continuously on a dedicated Wi
 First, clone this repository to a permanent location on your machine (e.g., `C:\Projects\EagleBot`).
 
 ```bash
-git clone https://github.com/ethandillon/Bald-Eagle-Recognition
-cd your-repo-name
+git clone https://github.com/ethandillon/Bald-Eagle-Recognition.git
+cd Bald-Eagle-Recognition
 ```
 
 ### Step 2: Install Python
@@ -108,9 +108,3 @@ To make this script run 24/7 and automatically start on boot, we will use the Wi
 5.  **Settings Tab:**
     - **Uncheck** `Stop the task if it runs longer than:`.
 6.  **Save the Task.** It will prompt for your Windows password to grant permissions.
-
-### Important Note on Laptop Setup
-If running on a laptop, you must configure its power settings to **never sleep** when plugged in and to **do nothing** when the lid is closed. This ensures the script runs uninterrupted. Be mindful of heat and ensure proper ventilation.
-
----
-```
