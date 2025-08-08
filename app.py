@@ -20,7 +20,7 @@ from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input, d
 from dotenv import load_dotenv
 import streamlink
 
-
+PROBABILITY_THRESHOLD = 0.7
 error_email_sent_this_outage = False
 # The script will run once per day at a random time between these hours.
 RANDOM_WINDOW_START_HOUR = 8  # 8 AM
@@ -78,6 +78,7 @@ def send_email(subject, content, recipient_email=os.getenv("RECIPIENT_EMAIL"), s
 def run_detection_cycle():
     """
     Runs a single cycle of the detection process with proper error handling.
+    Confirms an eagle detection only if the probability is above the global threshold.
     Returns True on success, False on failure.
     """
     global error_email_sent_this_outage
@@ -138,27 +139,25 @@ def run_detection_cycle():
         else:
             top_pred_id, top_pred_label, top_pred_probability = decoded_preds[0]
 
-            if top_pred_label == 'bald_eagle':
-                print(f"SUCCESS: Bald Eagle is the #1 prediction with {top_pred_probability:.1%} probability!")
+            # NEW LOGIC: Check for eagle AND that probability is above our threshold
+            if top_pred_label == 'bald_eagle' and top_pred_probability >= PROBABILITY_THRESHOLD:
+                print(f"SUCCESS: Bald Eagle detected with {top_pred_probability:.1%} probability, which is above the {PROBABILITY_THRESHOLD:.0%} threshold!")
 
-                # ### MODIFICATION: Draw the top 5 predictions onto the image frame
+                # Draw the top 5 predictions onto the image frame
                 y_pos = 70
                 line_height = 50
                 font_scale = 1.2
                 font_thickness = 3
 
-                # Add a semi-transparent background for readability
                 cv2.rectangle(frame, (20, 20), (800, 30 + (len(decoded_preds) * line_height)), (0,0,0), -1)
 
                 for i, (_, label, probability) in enumerate(decoded_preds, start=1):
                     text = f"{i}. {label.replace('_', ' ').title()}: {probability:.1%}"
-                    # Add a white outline for the text
                     cv2.putText(frame, text, (50, y_pos), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness + 2)
-                    # Add the main text color
                     cv2.putText(frame, text, (50, y_pos), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), font_thickness)
                     y_pos += line_height
 
-                # ### MODIFICATION: Encode the image to memory instead of saving it to a file
+                # Encode the image to memory
                 success, encoded_image = cv2.imencode('.jpg', frame)
                 image_bytes = None
                 if success:
@@ -168,14 +167,19 @@ def run_detection_cycle():
                     print("ERROR: Failed to encode image to JPEG format.")
 
                 # Send the email with the in-memory image data
-                subject = "Bald Eagle Detection Alert! (#1 Prediction)"
+                subject = f"Bald Eagle Detection Alert! ({top_pred_probability:.1%})"
                 content = (
-                    f"A Bald Eagle was detected as the #1 prediction at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n\n"
-                    f"Confidence: {top_pred_probability:.1%}"
+                    f"A Bald Eagle was detected at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n\n"
+                    f"Confidence: {top_pred_probability:.1%}\n"
+                    f"Required Threshold: {PROBABILITY_THRESHOLD:.0%}"
                 )
                 send_email(subject, content, image_data=image_bytes, image_subtype='jpeg')
             else:
-                print(f"Bald eagle not the #1 prediction. Top result: {top_pred_label.replace('_', ' ').title()} ({top_pred_probability:.1%})")
+                # UPDATED ELSE LOGIC: Handle cases where the prediction is an eagle but below the threshold
+                if top_pred_label == 'bald_eagle':
+                    print(f"Bald eagle was the top prediction, but its probability ({top_pred_probability:.1%}) is below the {PROBABILITY_THRESHOLD:.0%} threshold. No alert sent.")
+                else:
+                    print(f"Bald eagle not the #1 prediction. Top result: {top_pred_label.replace('_', ' ').title()} ({top_pred_probability:.1%})")
 
         return True
 
